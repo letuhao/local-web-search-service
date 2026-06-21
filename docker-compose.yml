@@ -1,0 +1,61 @@
+# SearXNG (search backend) + the shim (Tavily-compatible HTTP API + MCP tool).
+#
+# The shim is the only thing LoreWeave (or an MCP client) talks to. SearXNG is
+# internal to the compose network and need not be published — uncomment its
+# ports only for debugging.
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: lws-searxng
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      # Used to build absolute URLs in some responses; harmless for JSON search.
+      - SEARXNG_BASE_URL=http://localhost:8080/
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-please-change-this-searxng-secret}
+    # ports:
+    #   - "8080:8080"   # uncomment to hit SearXNG directly while debugging
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Scrapling sidecar — browser / anti-bot page fetching, exposed over MCP.
+  # Internal to the compose network; publish 8000 only for direct debugging.
+  scrapling:
+    image: pyd4vinci/scrapling:latest
+    container_name: lws-scrapling
+    command: ["mcp", "--http", "--host", "0.0.0.0", "--port", "8000"]
+    shm_size: "2gb"     # Chromium stability under Playwright
+    # ports:
+    #   - "8000:8000"   # uncomment to hit the Scrapling MCP directly
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1',8000),5).close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  web-search:
+    build: .
+    container_name: lws-web-search
+    ports:
+      - "${PORT:-15487}:8090"
+    environment:
+      - SEARXNG_URL=http://searxng:8080
+      - SCRAPLING_MCP_URL=${SCRAPLING_MCP_URL:-http://scrapling:8000/mcp}
+      - WEB_SEARCH_SECRET=${WEB_SEARCH_SECRET:-}
+      - ENABLE_EXTRACT=${ENABLE_EXTRACT:-true}
+      - EXTRACT_TOP_N=${EXTRACT_TOP_N:-3}
+      - ENABLE_FETCH=${ENABLE_FETCH:-true}
+      - PORT=8090
+    depends_on:
+      searxng:
+        condition: service_healthy
+      scrapling:
+        condition: service_healthy
+    restart: unless-stopped

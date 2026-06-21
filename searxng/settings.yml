@@ -1,0 +1,39 @@
+# SearXNG config — merges over the image defaults.
+#
+# IMPORTANT lesson on engines: SearXNG's resilience comes from querying MANY
+# engines and merging whatever succeeds. Public engines routinely block /
+# rate-limit / CAPTCHA a single server IP, and SearXNG logs each such failure
+# at ERROR. Those per-engine ERRORs are EXPECTED and benign — as long as enough
+# engines are enabled, some succeed and you still get results. Disabling engines
+# to quiet the logs backfires: thin the pool and a transient rate-limit on the
+# survivors yields ZERO results. So we keep the broad default engine set.
+#
+# The ONLY engines we remove are the Tor/onion ones, which need a Tor proxy we
+# do not run — they fail to *load* at startup (one-off ERROR) and can never
+# return anything, so removing them costs no results and cleans startup.
+#
+# Engines you'll still see occasional runtime ERRORs from (google IndexError,
+# duckduckgo/startpage CAPTCHA, brave/qwant/bing "too many requests", wikipedia
+# timeout) are left ENABLED on purpose — each still contributes results much of
+# the time, and the failures are tolerated by the merge. This is normal
+# metasearch behavior, not a defect in this service.
+use_default_settings:
+  engines:
+    remove:
+      - ahmia
+      - torch
+
+server:
+  # Overridden at runtime by the SEARXNG_SECRET env var in docker-compose.
+  secret_key: "please-change-this-searxng-secret"
+  limiter: false          # no per-IP rate limiting for a private/internal box
+  image_proxy: false
+
+search:
+  # JSON is REQUIRED — the shim calls /search?format=json. Without it SearXNG
+  # returns HTML and the shim raises an "enable formats" upstream error.
+  formats:
+    - html
+    - json
+  safe_search: 0
+  autocomplete: ""
