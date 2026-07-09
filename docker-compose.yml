@@ -49,6 +49,9 @@ services:
       - SEARXNG_URL=http://searxng:8080
       - SCRAPLING_MCP_URL=${SCRAPLING_MCP_URL:-http://scrapling:8000/mcp}
       - WEB_SEARCH_SECRET=${WEB_SEARCH_SECRET:-}
+      # Tavily fallback (empty key ⇒ pure-SearXNG mode, no fallback).
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - SEARCH_FALLBACK_ENABLED=${SEARCH_FALLBACK_ENABLED:-true}
       - ENABLE_EXTRACT=${ENABLE_EXTRACT:-true}
       - EXTRACT_TOP_N=${EXTRACT_TOP_N:-3}
       - ENABLE_FETCH=${ENABLE_FETCH:-true}

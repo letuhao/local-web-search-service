@@ -32,6 +32,15 @@ WEB_SEARCH_SECRET: str = os.getenv("WEB_SEARCH_SECRET", "").strip()
 DEFAULT_MAX_RESULTS: int = 5
 MAX_RESULTS_CAP: int = 20
 
+# --- Search fallback: Tavily (contract §4 backend/profile selection) ---------
+# SearXNG stays PRIMARY (free, keyless). Tavily is used ONLY when SearXNG
+# returns zero results or errors — so a research turn never comes back empty.
+# Empty TAVILY_API_KEY disables the fallback entirely (pure-SearXNG mode).
+TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "").strip()
+TAVILY_BASE_URL: str = os.getenv("TAVILY_BASE_URL", "https://api.tavily.com").rstrip("/")
+TAVILY_TIMEOUT_S: float = float(os.getenv("TAVILY_TIMEOUT_S", "20"))
+SEARCH_FALLBACK_ENABLED: bool = _flag("SEARCH_FALLBACK_ENABLED", True)
+
 # --- Optional content enrichment (contract §5a) -----------------------------
 # On search_depth="advanced", fetch + extract full page text for the top N
 # results (richer `content` than SearXNG snippets). Requires trafilatura.

@@ -38,6 +38,10 @@ class SearchResponse(BaseModel):
     query: str
     answer: Optional[str] = None
     results: List[SearchResultItem] = Field(default_factory=list)
+    # Which backend served this response: "searxng" (primary) or "tavily"
+    # (fallback). Informational — an EXTRA field beyond the §3 contract, which
+    # LoreWeave's adapter ignores. Useful for observing fallback rate.
+    provider: str = "searxng"
 
 
 # --- Fetch capability (contract §10) ----------------------------------------

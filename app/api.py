@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 
-from . import auth, config, fetch_service, scrapling_client, searxng_client
+from . import auth, config, fetch_service, scrapling_client, searxng_client, tavily_client
 from .models import BulkFetchRequest, FetchRequest, SearchRequest
 from .service import run_search
 
@@ -27,6 +27,7 @@ async def health() -> dict:
         "version": _version(),
         "backends": {
             "search": "searxng",
+            "search_fallback": "tavily" if tavily_client.is_enabled() else None,
             "fetch": "scrapling" if scrapling_client.is_configured() else "http-fallback",
         },
         "capabilities": caps,

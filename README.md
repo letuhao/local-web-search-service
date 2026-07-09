@@ -2,8 +2,10 @@
 
 Self-hosted **web search + page fetch** for LoreWeave's glossary deep-research
 feature:
-- **Search** — backed by **[SearXNG](https://github.com/searxng/searxng)** (OSS
-  metasearch — no API key, no account, no per-query cost).
+- **Search** — **[SearXNG](https://github.com/searxng/searxng)** primary (OSS
+  metasearch — no API key, no per-query cost), with an optional
+  **[Tavily](https://tavily.com)** fallback so a research turn never comes back
+  empty. See [Search reliability](#search-reliability-two-tier-backend).
 - **Fetch** — backed by a **[Scrapling](https://scrapling.readthedocs.io/)
   sidecar** (browser rendering + anti-bot), with an in-process HTTP fallback.
 
@@ -142,6 +144,9 @@ Tools:
 | `SEARXNG_URL` | `http://localhost:8080` | SearXNG base URL (compose: `http://searxng:8080`). |
 | `SEARXNG_ENGINES` | _(empty)_ | Comma-separated engine subset; empty ⇒ SearXNG defaults. |
 | `SEARXNG_TIMEOUT_S` | `15` | SearXNG request timeout. |
+| `TAVILY_API_KEY` | _(empty)_ | Enables the Tavily fallback. Empty ⇒ pure-SearXNG mode. |
+| `SEARCH_FALLBACK_ENABLED` | `true` | Master toggle for the fallback (needs a key too). |
+| `TAVILY_TIMEOUT_S` | `20` | Tavily request timeout. |
 | `ENABLE_EXTRACT` | `true` | Full-page extract on `search_depth="advanced"`. |
 | `EXTRACT_TOP_N` | `3` | How many top results to extract. |
 | `EXTRACT_MAX_CHARS` | `4000` | Cap on extracted `content` length. |
@@ -179,6 +184,42 @@ pytest -q          # contract tests, no live SearXNG needed (SearXNG is mocked)
 
 ---
 
+## Search reliability: two-tier backend
+
+**SearXNG is a metasearch _scraper_, not its own index.** It proxies Google/
+Bing/Brave/etc., and those engines actively CAPTCHA and rate-limit self-hosted
+IPs. It is self-hosted but **not self-sufficient** — that is inherent, not a bug
+in this service.
+
+Two things make it reliable here:
+
+**1. A wide engine pool (`searxng/settings.yml`).** SearXNG's stock config
+enables only **four** real web engines (`brave`, `duckduckgo`, `google`,
+`startpage`) — and all four block self-hosted instances. When they die at once
+you get **zero results**. We enable ~10 engines instead, including `mojeek` and
+`mwmbl` (independent crawlers that don't block servers) plus `bing`, `yahoo`,
+`qwant`, `yep`, `presearch`, `duckduckgo web`. Measured on the same 8-query
+benchmark: **2/8 → 8/8**, and 10/10 under a rapid burst.
+
+**2. A Tavily fallback (optional).** Even a wide pool is best-effort. If SearXNG
+returns **zero results or errors**, the shim calls Tavily so the turn still
+succeeds. The response's `provider` field says which backend served it.
+
+```
+SearXNG has results  →  return them          (Tavily never called ⇒ $0)
+SearXNG 0 results    →  try Tavily; still nothing ⇒ empty 200 (valid "not found")
+SearXNG errors       →  try Tavily; if it also fails ⇒ surface SearXNG's 502/429
+```
+
+Set `TAVILY_API_KEY` in `.env` to enable (free tier: **1,000 credits/month**,
+basic search = 1 credit). Leave it empty for pure-SearXNG mode. Because the
+fallback only fires when SearXNG comes up empty, normal operation costs nothing.
+
+> Note: Brave's Search API **removed its free tier in Feb 2026** (now ~$5/1k
+> queries), which is why Tavily is the fallback of choice here.
+
+---
+
 ## Troubleshooting: ERROR lines in the `searxng` container logs
 
 Seeing things like `SearxEngineCaptchaException`, `google ... IndexError`,
@@ -190,10 +231,13 @@ not the shim (the `web-search` container logs stay clean).
   rate-limit a single server IP. SearXNG logs each failed engine at ERROR.
 - SearXNG queries **many** engines and merges whatever succeeds, so a few
   engines failing still returns a full result set — that's the resilience.
-- **Don't disable engines to silence the logs** — thinning the pool means a
-  transient rate-limit on the survivors can yield **zero** results. Keep the
-  broad set. We remove only the Tor engines (`ahmia`, `torch`), which can't
-  load without a Tor proxy and never return anything (see `searxng/settings.yml`).
+- **If you get zero results, the cause is almost always too few enabled
+  engines**, not "SearXNG is broken." The stock config enables only four real
+  web engines and all four block self-hosted IPs. See
+  [Search reliability](#search-reliability-two-tier-backend) — `searxng/settings.yml`
+  widens the pool. Removing engines to quiet the logs makes this *worse*.
+- Tor engines (`ahmia`, `torch`) are removed outright: they need a Tor proxy we
+  don't run, so they only fail to load and never return anything.
 - Bursty testing trips rate limits (engines auto-suspend ~180s then recover).
   At normal deep-research volume you'll rarely see them.
 
