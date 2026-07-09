@@ -1,27 +1,64 @@
 # SearXNG config — merges over the image defaults.
 #
-# IMPORTANT lesson on engines: SearXNG's resilience comes from querying MANY
-# engines and merging whatever succeeds. Public engines routinely block /
-# rate-limit / CAPTCHA a single server IP, and SearXNG logs each such failure
-# at ERROR. Those per-engine ERRORs are EXPECTED and benign — as long as enough
-# engines are enabled, some succeed and you still get results. Disabling engines
-# to quiet the logs backfires: thin the pool and a transient rate-limit on the
-# survivors yields ZERO results. So we keep the broad default engine set.
+# WHY THIS FILE MATTERS: SearXNG's stock config enables only FOUR real web
+# engines (brave, duckduckgo, google, startpage) — the other "enabled" defaults
+# are dictionary/currency/translate/wiki helpers, not web search. All four of
+# those routinely block a self-hosted instance:
+#     duckduckgo -> CAPTCHA          startpage -> CAPTCHA
+#     brave      -> 429 rate-limit   google    -> HTML parser IndexError
+# When they're all blocked at once you get ZERO results. That is the failure
+# most self-hosted SearXNG users hit, and it is a CONFIG problem, not proof
+# that SearXNG can't work.
 #
-# The ONLY engines we remove are the Tor/onion ones, which need a Tor proxy we
-# do not run — they fail to *load* at startup (one-off ERROR) and can never
-# return anything, so removing them costs no results and cleans startup.
+# THE FIX: widen the pool with engines that do NOT fight self-hosted clients.
+# `mojeek` and `mwmbl` run their own independent crawlers and welcome bots;
+# `bing`, `yahoo`, `qwant`, `yep`, `presearch` are far more tolerant than the
+# big-four above. With ~10 engines answering, a few being blocked no longer
+# empties the result set — that redundancy IS the resilience.
 #
-# Engines you'll still see occasional runtime ERRORs from (google IndexError,
-# duckduckgo/startpage CAPTCHA, brave/qwant/bing "too many requests", wikipedia
-# timeout) are left ENABLED on purpose — each still contributes results much of
-# the time, and the failures are tolerated by the merge. This is normal
-# metasearch behavior, not a defect in this service.
+# Tor/onion engines are removed outright: they need a Tor proxy we don't run,
+# so they only fail to load at startup and can never return anything.
 use_default_settings:
   engines:
     remove:
       - ahmia
       - torch
+
+engines:
+  # --- Independent indexes: server-friendly, do not block. Highest value. ---
+  - name: mojeek
+    disabled: false
+  - name: mwmbl
+    disabled: false
+
+  # --- Major indexes, tolerant of self-hosted clients. ---
+  - name: bing
+    disabled: false
+  - name: yahoo
+    disabled: false
+  - name: qwant
+    disabled: false
+  - name: yep
+    disabled: false
+  - name: presearch
+    disabled: false
+  # Alternate DuckDuckGo implementation — often works when `duckduckgo` CAPTCHAs.
+  - name: duckduckgo web
+    disabled: false
+
+  # --- Kept enabled but expected to fail often; they still help when they work.
+  # Do NOT rely on these alone (that is the zero-results trap).
+  - name: brave
+    disabled: false     # 429s under burst, auto-recovers after ~180s
+  - name: google
+    disabled: false     # intermittent parser IndexError upstream
+
+  # --- Permanently CAPTCHA-walled from a self-hosted IP: pure latency + log
+  # noise, never results. Disabled (we now have plenty of engines without them).
+  - name: duckduckgo
+    disabled: true
+  - name: startpage
+    disabled: true
 
 server:
   # Overridden at runtime by the SEARXNG_SECRET env var in docker-compose.
